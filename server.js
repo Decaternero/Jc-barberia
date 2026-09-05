@@ -1,32 +1,38 @@
 const express=require('express');
 const session=require('express-session');
 const path=require('path');
+const fs=require('fs');
 const crypto=require('crypto');
 const app=express();
 const PORT=process.env.PORT||10000;
 const SUPABASE_URL=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
 const SUPABASE_KEY=process.env.SUPABASE_ANON_KEY||'';
 const USERS=[{u:'admin',p:process.env.ADMIN_PASSWORD||'admin123',role:'admin',name:'Administrador'},{u:'barbero',p:process.env.BARBER_PASSWORD||'barbero123',role:'barbero',name:'Barbero'}];
-
-// Render terminates HTTPS at its proxy. Trusting the proxy is required so
-// express-session can correctly issue a Secure cookie on the public HTTPS URL.
 app.set('trust proxy',1);
-app.use(express.json({limit:'4mb'}));
-app.use(session({
-  secret:process.env.SESSION_SECRET||crypto.randomBytes(32).toString('hex'),
-  resave:false,
-  saveUninitialized:false,
-  proxy:true,
-  cookie:{httpOnly:true,sameSite:'lax',secure:process.env.NODE_ENV==='production',maxAge:43200000}
-}));
+app.use(express.json({limit:'6mb'}));
+app.use(session({secret:process.env.SESSION_SECRET||crypto.randomBytes(32).toString('hex'),resave:false,saveUninitialized:false,proxy:true,cookie:{httpOnly:true,sameSite:'lax',secure:true,maxAge:43200000}}));
 function auth(req,res,next){if(!req.session.user)return res.status(401).json({error:'No autenticado'});next()}
 async function sb(pathname,options={}){if(!SUPABASE_URL||!SUPABASE_KEY)throw new Error('Supabase no configurado');const r=await fetch(SUPABASE_URL+'/rest/v1/'+pathname,{...options,headers:{apikey:SUPABASE_KEY,Authorization:'Bearer '+SUPABASE_KEY,'Content-Type':'application/json',...(options.headers||{})}});const text=await r.text();let body;try{body=text?JSON.parse(text):null}catch{body=text}if(!r.ok){const err=new Error('Supabase '+r.status);err.body=body;throw err}return body}
+app.get('/health',(req,res)=>res.json({ok:true,storage:!!(SUPABASE_URL&&SUPABASE_KEY)}));
 app.post('/api/login',(req,res)=>{const {u,p}=req.body||{};const x=USERS.find(a=>a.u===String(u||'').trim()&&a.p===String(p||''));if(!x)return res.status(401).json({error:'Credenciales inválidas'});req.session.user={u:x.u,role:x.role,name:x.name};req.session.save(err=>{if(err)return res.status(500).json({error:'No se pudo iniciar sesión'});res.json(req.session.user)})});
 app.post('/api/logout',(req,res)=>req.session.destroy(()=>res.json({ok:true})));
 app.get('/api/me',(req,res)=>req.session.user?res.json(req.session.user):res.status(401).json({error:'No autenticado'}));
-app.get('/api/db',auth,async(req,res)=>{try{const rows=await sb('app_state?id=eq.1&select=data,updated_at');res.json(rows?.[0]||{data:{},updated_at:null})}catch(e){console.error(e.body||e);res.status(500).json({error:'Error de base de datos'})}});
-app.post('/api/db',auth,async(req,res)=>{try{await sb('app_state?id=eq.1',{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({data:req.body,updated_at:new Date().toISOString()})});res.json({ok:true})}catch(e){console.error(e.body||e);res.status(500).json({error:'Error de base de datos'})}});
-app.get('/health',(req,res)=>res.json({ok:true,storage:!!(SUPABASE_URL&&SUPABASE_KEY)}));
+app.get('/api/db',auth,async(req,res)=>{try{const rows=await sb('app_state?id=eq.1&select=data,updated_at');res.json(rows?.[0]||{data:{},updated_at:null})}catch(e){console.error('DB GET',e.body||e);res.status(500).json({error:'Error de base de datos'})}});
+app.post('/api/db',auth,async(req,res)=>{try{await sb('app_state?id=eq.1',{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({data:req.body,updated_at:new Date().toISOString()})});res.json({ok:true})}catch(e){console.error('DB POST',e.body||e);res.status(500).json({error:'Error de base de datos'})}});
+function cloudify(html){
+ const oldUsers='const USERS=[{u:"admin",p:"admin123",role:"admin",name:"Administrador"},{u:"barbero",p:"barbero123",role:"barbero",name:"Barbero"}];';
+ html=html.replace(oldUsers,'const USERS=[];');
+ const oldState='let db=load(),me=null,currentView="dashboard";';
+ html=html.replace(oldState,'let db=load(),me=null,currentView="dashboard";let cloudSyncTimer=null,cloudApplying=false;');
+ const oldLoad='function load(){try{return JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){return fresh()}}\nfunction save(){localStorage.setItem(KEY,JSON.stringify(db))}';
+ const newLoad='function load(){try{return JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){return fresh()}}\nfunction save(){localStorage.setItem(KEY,JSON.stringify(db));if(me&&!cloudApplying)cloudSave()}\nasync function cloudGet(){const r=await fetch("/api/db",{credentials:"include"});if(!r.ok)throw new Error("db");return r.json()}\nasync function cloudSave(){try{await fetch("/api/db",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(db)})}catch(e){console.error(e)}}\nasync function syncFromCloud(){try{const c=await cloudGet(),d=c.data;if(d&&typeof d==="object"&&Object.keys(d).length){cloudApplying=true;db=d;localStorage.setItem(KEY,JSON.stringify(db));cloudApplying=false;renderAll()}}catch(e){console.error(e)}}\nfunction startCloudSync(){clearInterval(cloudSyncTimer);cloudSyncTimer=setInterval(syncFromCloud,5000)}';
+ html=html.replace(oldLoad,newLoad);
+ const oldLogin='function login(){let x=USERS.find(x=>x.u===val("lu").trim()&&x.p===val("lp"));if(!x){document.getElementById("le").textContent="Credenciales inválidas";return}me=x;sessionStorage.setItem("JC_USER",JSON.stringify(x));document.getElementById("login").style.display="none";document.getElementById("app").style.display="block";document.getElementById("user").textContent=x.name+" · "+x.role;renderAll()}\nfunction logout(){sessionStorage.removeItem("JC_USER");location.reload()}\ntry{me=JSON.parse(sessionStorage.getItem("JC_USER"))}catch(_){}\nif(me){document.getElementById("login").style.display="none";document.getElementById("app").style.display="block";document.getElementById("user").textContent=me.name+" · "+me.role}';
+ const newLogin='async function login(){const u=val("lu").trim(),p=val("lp");document.getElementById("le").textContent="Conectando...";try{const r=await fetch("/api/login",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({u,p})});if(!r.ok){document.getElementById("le").textContent="Usuario o contraseña incorrectos";return}me=await r.json();sessionStorage.setItem("JC_USER",JSON.stringify(me));const c=await cloudGet();if(c.data&&typeof c.data==="object"&&Object.keys(c.data).length){cloudApplying=true;db=c.data;localStorage.setItem(KEY,JSON.stringify(db));cloudApplying=false}else{await cloudSave()}document.getElementById("login").style.display="none";document.getElementById("app").style.display="block";document.getElementById("user").textContent=me.name+" · "+me.role;renderAll();startCloudSync();document.getElementById("le").textContent=""}catch(e){console.error(e);document.getElementById("le").textContent="No se pudo conectar con el servidor. Recarga la página."}}\nasync function logout(){try{await fetch("/api/logout",{method:"POST",credentials:"include"})}catch(e){}sessionStorage.removeItem("JC_USER");location.reload()}\ntry{me=JSON.parse(sessionStorage.getItem("JC_USER"))}catch(_){}\nif(me){(async()=>{try{const r=await fetch("/api/me",{credentials:"include"});if(!r.ok){me=null;sessionStorage.removeItem("JC_USER");return}me=await r.json();const c=await cloudGet();if(c.data&&typeof c.data==="object"&&Object.keys(c.data).length){cloudApplying=true;db=c.data;localStorage.setItem(KEY,JSON.stringify(db));cloudApplying=false}document.getElementById("login").style.display="none";document.getElementById("app").style.display="block";document.getElementById("user").textContent=me.name+" · "+me.role;renderAll();startCloudSync()}catch(e){console.error(e);me=null;sessionStorage.removeItem("JC_USER")}})()}';
+ html=html.replace(oldLogin,newLogin);
+ return html;
+}
+app.get('/',(req,res)=>{try{const p=path.join(__dirname,'JC_Barberia_Actualizada_Productos_Stock.html');res.type('html').send(cloudify(fs.readFileSync(p,'utf8')))}catch(e){console.error(e);res.status(500).send('Error cargando JC Barbería')}});
+app.get('/JC_Barberia_Actualizada_Productos_Stock.html',(req,res)=>{try{const p=path.join(__dirname,'JC_Barberia_Actualizada_Productos_Stock.html');res.type('html').send(cloudify(fs.readFileSync(p,'utf8')))}catch(e){res.status(500).send('Error cargando JC Barbería')}});
 app.use(express.static(path.join(__dirname)));
-app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 app.listen(PORT,()=>console.log('JC Barbería en puerto '+PORT));
