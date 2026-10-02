@@ -161,10 +161,12 @@ openModal("Datos de la cita",`<div id="appointmentCard" style="background:#fff;c
 <div class="toolbar" style="margin-top:12px"><button onclick="closeModal()">✓ Cerrar</button></div>`);
 }
 function setApptStatus(id,status){
-let a=db.appointments.find(x=>x.id===id);if(!a)return;
+let a=db.appointments.find(x=>x.id===id);if(!a)return alert("No se encontró la cita.");
+if(["Ya vino","No vino","Cancelada"].includes(a.status))return alert("Esta cita ya está cerrada.");
 a.status=status;a.statusBy=me.u;a.statusAt=new Date().toLocaleString("es-PE");
 log("Estado de cita",a.date+" "+a.time+" · "+status);
 save();renderAll();
+if(status==="Ya vino")showAppointmentCard(a);
 }
 function stock(){document.getElementById("stock").innerHTML=`<h1>Stock</h1><div class="notice">Las ventas de productos descuentan stock automáticamente. Una anulación administrativa devuelve las unidades al inventario.</div><div class="card">${admin()?`<div class="formgrid"><div class="field"><label>Producto</label><input id="pn"></div><div class="field"><label>Stock inicial</label><input id="pq0" type="number" value="0"></div><div class="field"><label>Mínimo</label><input id="pmin" type="number" value="2"></div><div class="field"><label>Costo</label><input id="pc" type="number" step=".01" value="0"></div><div class="field"><label>Precio venta</label><input id="ps" type="number" step=".01" value="0"></div></div><button onclick="addProduct()">Agregar producto</button>`:"Solo administrador puede agregar/modificar stock."}</div><div class="tablewrap"><table><thead><tr><th>Producto</th><th>Stock</th><th>Mínimo</th><th>Costo</th><th>Venta</th><th>Valor</th><th>Estado</th><th>Mov.</th></tr></thead><tbody>${db.stock.map(p=>`<tr><td>${e(p.name)}</td><td>${p.qty}</td><td>${p.min}</td><td>${money(p.cost)}</td><td>${money(p.sale)}</td><td>${money(p.qty*p.cost)}</td><td><span class="badge ${p.qty<=p.min?"warning":"ok"}">${p.qty<=p.min?"BAJO":"OK"}</span></td><td>${admin()?`<button class="small" onclick="moveStock('${p.id}')">Movimiento</button>`:"—"}</td></tr>`).join("")||`<tr><td colspan="8" class="muted">No hay productos.</td></tr>`}</tbody></table></div>`}
 function addProduct(){let n=val("pn").trim();if(!n)return;db.stock.push({id:gid(),name:n,qty:+val("pq0")||0,min:+val("pmin")||0,cost:+val("pc")||0,sale:+val("ps")||0});log("Producto creado",n);save();renderAll()}
