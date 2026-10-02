@@ -134,7 +134,44 @@ function expenses(){document.getElementById("gastos").innerHTML=`<h1>Gastos</h1>
 function addExpense(){let a=+val("ga");if(!a)return;db.expenses.push({id:gid(),date:val("gd"),concept:val("gc"),cat:val("gx"),amount:a,by:me.u});log("Gasto registrado",val("gc"));save();renderAll()}
 function cash(){let d=today(),s=db.sales.filter(x=>x.date===d&&!x.annulled),tot=s.reduce((a,x)=>a+x.total,0),g=db.expenses.filter(x=>x.date===d).reduce((a,x)=>a+x.amount,0);document.getElementById("caja").innerHTML=`<h1>Cierre de caja</h1><div class="grid"><div class="card">Ventas<div class="metric">${money(tot)}</div></div><div class="card">Efectivo<div class="metric">${money(s.filter(x=>x.pay==="Efectivo").reduce((a,x)=>a+x.total,0))}</div></div><div class="card">Yape/Plin<div class="metric">${money(s.filter(x=>x.pay==="Yape/Plin").reduce((a,x)=>a+x.total,0))}</div></div><div class="card">Tarjeta<div class="metric">${money(s.filter(x=>x.pay==="Tarjeta").reduce((a,x)=>a+x.total,0))}</div></div></div><div class="card">Gastos: <b>${money(g)}</b> · Neto: <b>${money(tot-g)}</b><br><br>${admin()?'<button onclick="closeCash()">Cerrar caja</button>':""}</div><div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Ventas</th><th>Gastos</th><th>Neto</th><th>Usuario</th></tr></thead><tbody>${db.closures.map(c=>`<tr><td>${c.date}</td><td>${money(c.sales)}</td><td>${money(c.expenses)}</td><td>${money(c.net)}</td><td>${c.by}</td></tr>`).join("")}</tbody></table></div>`}
 function closeCash(){let d=today(),s=db.sales.filter(x=>x.date===d&&!x.annulled),tot=s.reduce((a,x)=>a+x.total,0),g=db.expenses.filter(x=>x.date===d).reduce((a,x)=>a+x.amount,0);if(db.closures.some(x=>x.date===d))return alert("Caja ya cerrada.");db.closures.push({date:d,sales:tot,expenses:g,net:tot-g,by:me.u});log("Caja cerrada",d);save();renderAll()}
-function reports(){let m=today().slice(0,7),s=db.sales.filter(x=>x.date.startsWith(m)&&!x.annulled),prod=s.filter(x=>x.kind==="product"),services=s.filter(x=>x.kind==="service"),rev=s.reduce((a,x)=>a+x.total,0),cost=prod.reduce((a,x)=>a+(x.costUnit||0)*x.qty,0);document.getElementById("reportes").innerHTML=`<h1>Reportes</h1><div class="grid"><div class="card">Ingresos<div class="metric">${money(rev)}</div></div><div class="card">Ventas de productos<div class="metric">${money(prod.reduce((a,x)=>a+x.total,0))}</div></div><div class="card">Costo productos<div class="metric">${money(cost)}</div></div><div class="card">Margen bruto productos<div class="metric">${money(prod.reduce((a,x)=>a+x.total,0)-cost)}</div></div></div><div class="card"><h2>Ventas por barbero</h2>${db.barbers.map(b=>{let x=s.filter(z=>z.barberId===b.id),t=x.reduce((a,z)=>a+z.total,0),c=b.mode==="percentage"?t*b.percent/100:0;return`<p><b>${e(b.name)}</b>: ${money(t)} · comisión ${money(c)}</p>`}).join("")}</div>`}
+function reports(){
+let selectedMonth=window.reportMonth||today().slice(0,7);
+let current=today().slice(0,7);
+let months=[...new Set([...db.sales.map(x=>x.date?.slice(0,7)),...db.expenses.map(x=>x.date?.slice(0,7))].filter(Boolean))];
+if(!months.includes(current))months.push(current);
+months.sort().reverse();
+let monthLabel=x=>{let [y,m]=x.split("-");return new Date(+y,+m-1,1).toLocaleDateString("es-PE",{month:"long",year:"numeric"}).replace(/^./,c=>c.toUpperCase())};
+let s=db.sales.filter(x=>x.date.startsWith(selectedMonth)&&!x.annulled);
+let prod=s.filter(x=>x.kind==="product");
+let rev=s.reduce((a,x)=>a+x.total,0);
+let expenses=db.expenses.filter(x=>x.date.startsWith(selectedMonth));
+let gastos=expenses.reduce((a,x)=>a+x.amount,0);
+let saldo=rev-gastos;
+let cost=prod.reduce((a,x)=>a+(x.costUnit||0)*x.qty,0);
+let productSales=prod.reduce((a,x)=>a+x.total,0);
+let serviceSales=s.filter(x=>x.kind==="service").reduce((a,x)=>a+x.total,0);
+document.getElementById("reportes").innerHTML=`<h1>Reportes</h1>
+<div class="card"><div class="toolbar" style="align-items:end">
+<div class="field" style="margin:0;min-width:220px"><label>Consultar cierre del mes</label><select id="reportMonth" onchange="window.reportMonth=this.value;reports()">${months.map(m=>`<option value="${m}" ${m===selectedMonth?"selected":""}>${monthLabel(m)}${m===current?" · Actual":""}</option>`).join("")}</select></div>
+<button class="secondary" onclick="window.reportMonth='${current}';reports()">📅 Mes actual</button>
+</div>
+<div class="notice">📊 <b>Cierre de ${monthLabel(selectedMonth)}:</b> el saldo final se calcula como ingresos menos gastos. Ese es el monto que queda para iniciar el siguiente mes.</div>
+</div>
+<div class="grid">
+<div class="card">💰 Ingresos del mes<div class="metric">${money(rev)}</div></div>
+<div class="card">💸 Gastos del mes<div class="metric">${money(gastos)}</div></div>
+<div class="card">🟢 Saldo final<div class="metric">${money(saldo)}</div><div class="muted">Para iniciar el siguiente mes</div></div>
+<div class="card">🧾 Registros de venta<div class="metric">${s.length}</div></div>
+</div>
+<div class="grid">
+<div class="card">Servicios<div class="metric">${money(serviceSales)}</div></div>
+<div class="card">Productos vendidos<div class="metric">${money(productSales)}</div></div>
+<div class="card">Costo de productos<div class="metric">${money(cost)}</div></div>
+<div class="card">Resultado productos<div class="metric">${money(productSales-cost)}</div></div>
+</div>
+<div class="card"><h2>Detalle de gastos</h2>${expenses.length?expenses.map(g=>`<p>• ${e(g.date)} — ${e(g.concept)} (${e(g.cat)}): <b>${money(g.amount)}</b></p>`).join(""):"<p class='muted'>No hay gastos registrados en este mes.</p>"}</div>
+<div class="card"><h2>Ventas por barbero</h2>${db.barbers.map(b=>{let x=s.filter(z=>z.barberId===b.id),t=x.reduce((a,z)=>a+z.total,0),com=b.mode==="percentage"?t*b.percent/100:0;return`<p><b>${e(b.name)}</b>: ${money(t)} · comisión ${money(com)}</p>`}).join("")}</div>`;
+}
 function config(){document.getElementById("config").innerHTML=`<h1>Configuración</h1><div class="card"><p><b>Seguridad:</b> el barbero puede registrar ventas, pero no puede anularlas ni modificar stock, gastos o cierres.</p>${admin()?`<button onclick="backup()">💾 Descargar respaldo</button> <button class="danger" onclick="reset()">Limpiar datos de prueba</button>`:""}<p class="muted">Esta versión HTML guarda los datos localmente en el navegador. Antes de usarla con datos reales en Internet debe conectarse a un backend y una base de datos segura.</p></div><div class="card"><h2>Auditoría</h2><div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr></thead><tbody>${db.audit.slice().reverse().slice(0,100).map(a=>`<tr><td>${a.date}</td><td>${a.user}</td><td>${e(a.action)}</td><td>${e(a.detail)}</td></tr>`).join("")}</tbody></table></div></div>`}
 function backup(){let a=document.createElement("a"),b=new Blob([JSON.stringify(db,null,2)],{type:"application/json"});a.href=URL.createObjectURL(b);a.download="JC-Barberia-respaldo-"+today()+".json";a.click()}
 function reset(){if(confirm("¿Borrar todos los datos de prueba?")){db=fresh();save();renderAll()}}
