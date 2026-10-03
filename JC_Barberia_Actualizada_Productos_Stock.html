@@ -63,7 +63,7 @@ function fresh(){return{clients:[],sales:[],memberships:[],barbers:[{id:gid(),na
 function load(){try{return JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){return fresh()}}
 let saving=false;
 function save(){if(saving)return false;saving=true;try{localStorage.setItem(KEY,JSON.stringify(db));return true}finally{saving=false}}
-function notify(msg){let t=document.getElementById("toast");if(!t)return;t.textContent="✅ "+msg;t.classList.add("show");clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>t.classList.remove("show"),2500)}
+function notify(msg){alert("✅ "+msg)}
 function gid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 function today(){return new Date().toISOString().slice(0,10)}
 function money(x){return "S/ "+Number(x||0).toFixed(2)}
