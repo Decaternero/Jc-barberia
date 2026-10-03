@@ -61,8 +61,11 @@ const KEY="JC_BARBERIA_V8";
 let db=load(),me=null,currentView="dashboard";
 function fresh(){return{clients:[],sales:[],memberships:[],barbers:[{id:gid(),name:"Barbero principal",phone:"",start:today(),active:true,mode:"percentage",percent:50,rent:0}],stock:[],movements:[],expenses:[],appointments:[],closures:[],audit:[]}}
 function load(){try{return JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){return fresh()}}
-let saving=false;
-function save(){if(saving)return false;saving=true;try{localStorage.setItem(KEY,JSON.stringify(db));return true}finally{saving=false}}
+let saving=false,cloudSaveBusy=false,cloudSaveQueued=false,cloudSyncTimer=null,cloudLastLocalChange=0,cloudLastSnapshot="";
+function save(){localStorage.setItem(KEY,JSON.stringify(db));cloudSaveQueued=true;jcCloudSave();return true}
+async function jcCloudSave(){if(cloudSaveBusy||!me)return;cloudSaveBusy=true;try{while(cloudSaveQueued){cloudSaveQueued=false;let snapshot=JSON.stringify(db);let r=await fetch("/api/db",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:snapshot,cache:"no-store"});if(!r.ok)throw new Error("No se pudo guardar en la nube");cloudLastSnapshot=snapshot;cloudLastLocalChange=Date.now()}}catch(err){console.error(err);cloudSaveQueued=true}finally{cloudSaveBusy=false}}
+async function jcCloudSync(){if(!me||cloudSaveBusy||cloudSaveQueued)return;if(Date.now()-cloudLastLocalChange<5000)return;try{let r=await fetch("/api/db",{credentials:"include",cache:"no-store"});if(!r.ok)return;let x=await r.json(),d=x.data;if(!d||typeof d!=="object"||!Object.keys(d).length)return;let incoming=JSON.stringify(d);if(incoming!==cloudLastSnapshot&&incoming!==JSON.stringify(db)){db=d;localStorage.setItem(KEY,incoming);cloudLastSnapshot=incoming;renderAll()}}catch(err){console.error(err)}}
+function startCloudSync(){clearInterval(cloudSyncTimer);jcCloudSync();cloudSyncTimer=setInterval(jcCloudSync,1000)}
 function notify(msg){let t=document.getElementById("toast");if(!t)return;t.textContent="✅ "+msg;t.classList.add("show");clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>t.classList.remove("show"),2500)}
 function gid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 function today(){return new Date().toISOString().slice(0,10)}
