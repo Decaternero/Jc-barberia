@@ -61,7 +61,9 @@ const KEY="JC_BARBERIA_V8";
 let db=load(),me=null,currentView="dashboard";
 function fresh(){return{clients:[],sales:[],memberships:[],barbers:[{id:gid(),name:"Barbero principal",phone:"",start:today(),active:true,mode:"percentage",percent:50,rent:0}],stock:[],movements:[],expenses:[],appointments:[],closures:[],audit:[]}}
 function load(){try{return JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){return fresh()}}
-let saving=false;\nfunction save(){if(saving)return false;saving=true;try{localStorage.setItem(KEY,JSON.stringify(db));return true}finally{saving=false}}\nfunction notify(msg){let t=document.getElementById("toast");if(!t)return;t.textContent="✅ "+msg;t.classList.add("show");clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>t.classList.remove("show"),2500)}
+let saving=false;
+function save(){if(saving)return false;saving=true;try{localStorage.setItem(KEY,JSON.stringify(db));return true}finally{saving=false}}
+function notify(msg){let t=document.getElementById("toast");if(!t)return;t.textContent="✅ "+msg;t.classList.add("show");clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>t.classList.remove("show"),2500)}
 function gid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 function today(){return new Date().toISOString().slice(0,10)}
 function money(x){return "S/ "+Number(x||0).toFixed(2)}
