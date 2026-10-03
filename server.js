@@ -25,6 +25,7 @@ function cloudify(html){
  const oldState='let db=load(),me=null,currentView="dashboard";';
  html=html.replace(oldState,'let db=load(),me=null,currentView="dashboard";let cloudSyncTimer=null,cloudApplying=false,cloudLastSnapshot="",cloudSyncBusy=false,cloudSavePending=false,cloudSaveBusy=false;');
  const oldLoad='function load(){try{return JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){return fresh()}}\\nlet saving=false;\\nfunction save(){if(saving)return false;saving=true;try{localStorage.setItem(KEY,JSON.stringify(db));return true}finally{saving=false}}';
+html=html.replace(oldLoad,newLoad);
 const newLoad=`function load(){try{return JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){return fresh()}}
 function save(){localStorage.setItem(KEY,JSON.stringify(db));if(me&&!cloudApplying){cloudSavePending=true;cloudSave()}}
 async function cloudGet(){const r=await fetch("/api/db",{credentials:"include",cache:"no-store"});if(!r.ok)throw new Error("db");return r.json()}
