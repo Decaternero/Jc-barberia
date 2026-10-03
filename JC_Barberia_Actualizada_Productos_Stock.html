@@ -75,8 +75,9 @@ function cname(id){return db.clients.find(x=>x.id===id)?.name||"Cliente ocasiona
 function log(a,d){db.audit.push({id:gid(),date:new Date().toLocaleString("es-PE"),user:me?.u||"",action:a,detail:d})}
 function login(){let x=USERS.find(x=>x.u===val("lu").trim()&&x.p===val("lp"));if(!x){document.getElementById("le").textContent="Credenciales inválidas";return}me=x;sessionStorage.setItem("JC_USER",JSON.stringify(x));document.getElementById("login").style.display="none";document.getElementById("app").style.display="block";document.getElementById("user").textContent=x.name+" · "+x.role;renderAll()}
 function logout(){sessionStorage.removeItem("JC_USER");location.reload()}
-try{me=JSON.parse(sessionStorage.getItem("JC_USER"))}catch(_){}
-if(me){document.getElementById("login").style.display="none";document.getElementById("app").style.display="block";document.getElementById("user").textContent=me.name+" · "+me.role}
+sessionStorage.removeItem("JC_USER");
+me=null;
+document.getElementById("login").style.display="grid";document.getElementById("app").style.display="none";
 function view(v){currentView=v;document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));document.getElementById(v).classList.add("active");document.querySelectorAll("aside button").forEach(x=>x.classList.toggle("active",x.dataset.v===v));render(v)}
 function renderAll(){["dashboard","ventas","clientes","membresias","barberos","agenda","stock","gastos","caja","reportes","config"].forEach(render);view(currentView)}
 function render(v){if(v==="dashboard")dash();if(v==="ventas")sales();if(v==="clientes")clients();if(v==="membresias")members();if(v==="barberos")barbers();if(v==="agenda")agenda();if(v==="stock")stock();if(v==="gastos")expenses();if(v==="caja")cash();if(v==="reportes")reports();if(v==="config")config()}
