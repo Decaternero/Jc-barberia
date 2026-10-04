@@ -65,7 +65,7 @@ let saving=false;
 function save(){if(saving)return false;saving=true;try{localStorage.setItem(KEY,JSON.stringify(db));return true}finally{saving=false}}
 function notify(msg){alert("✅ "+msg)}
 function gid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
-function today(){return new Date().toISOString().slice(0,10)}
+function today(){const p=new Intl.DateTimeFormat("en-US",{timeZone:"America/Lima",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());const y=p.find(x=>x.type==="year").value,m=p.find(x=>x.type==="month").value,d=p.find(x=>x.type==="day").value;return y+"-"+m+"-"+d}
 function money(x){return "S/ "+Number(x||0).toFixed(2)}
 function e(x){return String(x??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 function val(id){return document.getElementById(id).value}
