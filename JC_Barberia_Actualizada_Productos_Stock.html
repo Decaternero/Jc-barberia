@@ -241,8 +241,9 @@ let c=db.cashDays.find(x=>x.date===today()),amount=Number(val("cwAmount")),reaso
 if(!c||c.closed)return alert("La caja no está abierta.");
 if(!Number.isFinite(amount)||amount<=0)return alert("Ingresa un monto válido.");
 let sales=db.sales.filter(x=>x.date===today()&&!x.annulled&&x.pay==="Efectivo").reduce((a,x)=>a+x.total,0);
+let expenses=db.expenses.filter(x=>x.date===today()).reduce((a,x)=>a+Number(x.amount||0),0);
 let already=(c.withdrawals||[]).reduce((a,x)=>a+Number(x.amount||0),0);
-let available=Number(c.opening||0)+sales-already;
+let available=Number(c.opening||0)+sales-expenses-already;
 if(amount>available)return alert("No puedes retirar "+money(amount)+". El efectivo disponible estimado es "+money(available)+".");
 c.withdrawals.push({id:gid(),amount,reason,time:new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"}),by:me.u});
 log("Retiro de caja",money(amount)+" · "+reason);save();closeModal();cash();notify("Retiro registrado. La caja ahora espera "+money(available-amount)+" en efectivo.");
