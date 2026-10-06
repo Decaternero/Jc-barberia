@@ -39,7 +39,7 @@ main{flex:1;padding:18px;min-width:0}.view{display:none}.view.active{display:blo
 <button data-v="agenda" onclick="view('agenda')">📅 Agenda</button>
 <button data-v="stock" onclick="view('stock')">📦 Stock</button>
 <button data-v="gastos" onclick="view('gastos')">💸 Gastos</button>
-<button data-v="caja" onclick="view('caja')">🧾 Caja</button>
+<button data-v="caja" onclick="view('caja')">💵 Control de caja</button>
 <button data-v="reportes" onclick="view('reportes')">📊 Reportes</button>
 <button data-v="config" onclick="view('config')">⚙️ Configuración</button>
 </aside>
@@ -59,7 +59,8 @@ const SERVICES=[["Corte clásico",18],["Corte degradado",20],["Corte + barba",30
 const PLANS=[["Básico",30,40,2,1],["Smart",60,70,4,2],["Premium",90,100,6,3]];
 const KEY="JC_BARBERIA_V8";
 let db=load(),me=null,currentView="dashboard";
-function fresh(){return{clients:[],sales:[],memberships:[],barbers:[{id:gid(),name:"Barbero principal",phone:"",start:today(),active:true,mode:"percentage",percent:50,rent:0}],stock:[],movements:[],expenses:[],appointments:[],closures:[],audit:[]}}
+if(!Array.isArray(db.cashDays))db.cashDays=[];
+function fresh(){return{clients:[],sales:[],memberships:[],barbers:[{id:gid(),name:"Barbero principal",phone:"",start:today(),active:true,mode:"percentage",percent:50,rent:0}],stock:[],movements:[],expenses:[],appointments:[],closures:[],cashDays:[],audit:[]}}
 function load(){try{return JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){return fresh()}}
 let saving=false;
 function save(){if(saving)return false;saving=true;try{localStorage.setItem(KEY,JSON.stringify(db));return true}finally{saving=false}}
@@ -185,8 +186,75 @@ if(duplicate)return alert("Este gasto ya fue registrado. No se guardará duplica
 db.expenses.unshift({id:gid(),date,concept,cat,amount,by:me.u});
 log("Gasto registrado",concept+" · "+money(amount));save();expenses();notify("Gasto registrado correctamente.");
 }
-function cash(){let d=today(),s=db.sales.filter(x=>x.date===d&&!x.annulled),tot=s.reduce((a,x)=>a+x.total,0),g=db.expenses.filter(x=>x.date===d).reduce((a,x)=>a+x.amount,0);document.getElementById("caja").innerHTML=`<h1>Cierre de caja</h1><div class="grid"><div class="card">Ventas<div class="metric">${money(tot)}</div></div><div class="card">Efectivo<div class="metric">${money(s.filter(x=>x.pay==="Efectivo").reduce((a,x)=>a+x.total,0))}</div></div><div class="card">Yape/Plin<div class="metric">${money(s.filter(x=>x.pay==="Yape/Plin").reduce((a,x)=>a+x.total,0))}</div></div><div class="card">Tarjeta<div class="metric">${money(s.filter(x=>x.pay==="Tarjeta").reduce((a,x)=>a+x.total,0))}</div></div></div><div class="card">Gastos: <b>${money(g)}</b> · Neto: <b>${money(tot-g)}</b><br><br>${admin()?'<button onclick="closeCash()">Cerrar caja</button>':""}</div><div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Ventas</th><th>Gastos</th><th>Neto</th><th>Usuario</th></tr></thead><tbody>${db.closures.map(c=>`<tr><td>${c.date}</td><td>${money(c.sales)}</td><td>${money(c.expenses)}</td><td>${money(c.net)}</td><td>${c.by}</td></tr>`).join("")}</tbody></table></div>`}
-function closeCash(){let d=today(),s=db.sales.filter(x=>x.date===d&&!x.annulled),tot=s.reduce((a,x)=>a+x.total,0),g=db.expenses.filter(x=>x.date===d).reduce((a,x)=>a+x.amount,0);if(db.closures.some(x=>x.date===d))return alert("Caja ya cerrada.");db.closures.push({date:d,sales:tot,expenses:g,net:tot-g,by:me.u});log("Caja cerrada",d);save();cash();notify("Cierre de caja registrado correctamente.");}
+function cash(){
+let d=today(), c=db.cashDays.find(x=>x.date===d), prev=[...db.cashDays].filter(x=>x.closed).sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
+let sales=db.sales.filter(x=>x.date===d&&!x.annulled&&x.pay==="Efectivo"), cashSales=sales.reduce((a,x)=>a+x.total,0);
+let withdrawals=c?.withdrawals||[];
+let withdrawn=withdrawals.reduce((a,x)=>a+Number(x.amount||0),0);
+let expected=c?Number(c.opening||0)+cashSales-withdrawn:0;
+let status=c?(c.closed?"CERRADA":"ABIERTA"):"SIN ABRIR";
+let suggested=prev&&prev.closing!=null?Number(prev.closing):0;
+document.getElementById("caja").innerHTML=`<h1>Control de caja</h1>
+<div class="notice">💡 Esta sección controla <b>solo el efectivo físico de la caja</b>. Las aperturas, retiros y cierres <b>no se registran como gastos ni cambian los ingresos de los reportes</b>.</div>
+<div class="grid">
+<div class="card">Estado<div class="metric">${status}</div><div class="muted">${d}</div></div>
+<div class="card">Ventas en efectivo<div class="metric">${money(cashSales)}</div><div class="muted">Tomadas de las ventas registradas</div></div>
+<div class="card">Retiros de caja<div class="metric">${money(withdrawn)}</div><div class="muted">No afectan el informe global</div></div>
+<div class="card">Efectivo esperado<div class="metric">${money(expected)}</div><div class="muted">Lo que debería haber físicamente</div></div>
+</div>
+${!c?`<div class="card"><h2>🟢 Abrir caja</h2><p>Ingresa cuánto dinero físico tienes al comenzar el día.</p><div class="formgrid"><div class="field"><label>Dinero inicial de caja</label><input id="cashOpen" type="number" min="0" step=".01" value="${suggested.toFixed(2)}"></div></div>${prev?\`<div class="notice">El cierre anterior fue de <b>${money(suggested)}</b>. Puedes usarlo como apertura de hoy o cambiarlo.</div>\`:""}<button onclick="openCash()">Abrir caja</button></div>`
+:`<div class="card"><h2>📋 Caja del día</h2>
+<p>Inicio: <b>${money(c.opening)}</b> + ventas en efectivo: <b>${money(cashSales)}</b> − retiros: <b>${money(withdrawn)}</b> = <b>${money(expected)}</b> esperados.</p>
+${c.closed?`<div class="notice">${Number(c.closing)===Number(expected)?"✅ Caja cuadrada.":Number(c.closing)>Number(expected)?"⚠️ Hay un sobrante de "+money(Number(c.closing)-Number(expected))+".":"❗ Falta "+money(Number(expected)-Number(c.closing))+"."} Cierre físico: <b>${money(c.closing)}</b>.</div>`
+:`<div class="toolbar"><button onclick="withdrawCash()">💸 Registrar retiro de dinero</button><button onclick="closeCash()">🔒 Terminar y cerrar caja</button></div>`}
+<h3>Retiros registrados</h3>
+<div class="tablewrap"><table><thead><tr><th>Hora</th><th>Monto</th><th>Motivo</th><th>Usuario</th></tr></thead><tbody>
+${withdrawals.slice().reverse().map(w=>`<tr><td>${e(w.time)}</td><td>${money(w.amount)}</td><td>${e(w.reason)}</td><td>${e(w.by)}</td></tr>`).join("")||`<tr><td colspan="4" class="muted">No hay retiros registrados hoy.</td></tr>`}
+</tbody></table></div>
+</div>`}
+<div class="card"><h2>Historial de caja</h2><div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Apertura</th><th>Ventas efectivo</th><th>Retiros</th><th>Esperado</th><th>Cierre físico</th><th>Diferencia</th><th>Estado</th></tr></thead><tbody>
+${db.cashDays.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(x=>{let ws=(x.withdrawals||[]).reduce((a,w)=>a+Number(w.amount||0),0),vs=db.sales.filter(z=>z.date===x.date&&!z.annulled&&z.pay==="Efectivo").reduce((a,z)=>a+z.total,0),ex=Number(x.opening||0)+vs-ws,diff=x.closing==null?null:Number(x.closing)-ex;return`<tr><td>${x.date}</td><td>${money(x.opening)}</td><td>${money(vs)}</td><td>${money(ws)}</td><td>${money(ex)}</td><td>${x.closing==null?"—":money(x.closing)}</td><td>${diff==null?"—":money(diff)}</td><td>${x.closed?"Cerrada":"Abierta"}</td></tr>`}).join("")||`<tr><td colspan="8" class="muted">Aún no hay cierres de caja.</td></tr>`}
+</tbody></table></div></div>`;
+}
+function openCash(){
+if(db.cashDays.some(x=>x.date===today()))return alert("La caja de hoy ya está abierta.");
+let opening=Number(val("cashOpen"));if(!Number.isFinite(opening)||opening<0)return alert("Ingresa un monto inicial válido.");
+db.cashDays.push({id:gid(),date:today(),opening,withdrawals:[],closed:false,openedBy:me.u,openedAt:new Date().toLocaleString("es-PE")});
+log("Caja abierta",today()+" · "+money(opening));save();cash();notify("Caja abierta con "+money(opening)+".");
+}
+function withdrawCash(){
+let c=db.cashDays.find(x=>x.date===today());if(!c||c.closed)return alert("La caja de hoy no está abierta.");
+openModal("Registrar retiro de caja",`<div class="formgrid"><div class="field"><label>Monto retirado</label><input id="cwAmount" type="number" min="0.01" step=".01"></div><div class="field full"><label>Motivo (opcional)</label><input id="cwReason" placeholder="Ej.: dinero retirado para uso personal"></div></div><div class="notice">Este retiro <b>no se registrará como gasto</b> y no cambiará el informe global. Solo descontará efectivo de la caja.</div><button onclick="saveWithdrawal()">Registrar retiro</button>`);
+}
+function saveWithdrawal(){
+let c=db.cashDays.find(x=>x.date===today()),amount=Number(val("cwAmount")),reason=val("cwReason").trim()||"Retiro de caja";
+if(!c||c.closed)return alert("La caja no está abierta.");
+if(!Number.isFinite(amount)||amount<=0)return alert("Ingresa un monto válido.");
+let sales=db.sales.filter(x=>x.date===today()&&!x.annulled&&x.pay==="Efectivo").reduce((a,x)=>a+x.total,0);
+let already=(c.withdrawals||[]).reduce((a,x)=>a+Number(x.amount||0),0);
+let available=Number(c.opening||0)+sales-already;
+if(amount>available)return alert("No puedes retirar "+money(amount)+". El efectivo disponible estimado es "+money(available)+".");
+c.withdrawals.push({id:gid(),amount,reason,time:new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"}),by:me.u});
+log("Retiro de caja",money(amount)+" · "+reason);save();closeModal();cash();notify("Retiro registrado. La caja ahora espera "+money(available-amount)+" en efectivo.");
+}
+function closeCash(){
+let c=db.cashDays.find(x=>x.date===today());if(!c)return alert("Primero debes abrir la caja.");
+if(c.closed)return alert("La caja de hoy ya está cerrada.");
+let sales=db.sales.filter(x=>x.date===today()&&!x.annulled&&x.pay==="Efectivo").reduce((a,x)=>a+x.total,0);
+let withdrawn=(c.withdrawals||[]).reduce((a,x)=>a+Number(x.amount||0),0);
+let expected=Number(c.opening||0)+sales-withdrawn;
+openModal("Cerrar caja",`<div class="notice">Efectivo esperado: <b>${money(expected)}</b>.</div><div class="field"><label>¿Cuánto dinero físico tienes realmente al terminar?</label><input id="cashClose" type="number" min="0" step=".01" value="${expected.toFixed(2)}"></div><button onclick="saveCashClose()">Cerrar caja</button>`);
+}
+function saveCashClose(){
+let c=db.cashDays.find(x=>x.date===today()),closing=Number(val("cashClose"));
+if(!c||c.closed)return alert("La caja ya está cerrada.");
+if(!Number.isFinite(closing)||closing<0)return alert("Ingresa un monto válido.");
+let sales=db.sales.filter(x=>x.date===today()&&!x.annulled&&x.pay==="Efectivo").reduce((a,x)=>a+x.total,0);
+let withdrawn=(c.withdrawals||[]).reduce((a,x)=>a+Number(x.amount||0),0);
+let expected=Number(c.opening||0)+sales-withdrawn;
+c.closing=closing;c.expected=expected;c.difference=closing-expected;c.closed=true;c.closedBy=me.u;c.closedAt=new Date().toLocaleString("es-PE");
+log("Caja cerrada",today()+" · físico "+money(closing)+" · diferencia "+money(closing-expected));save();closeModal();cash();notify(closing===expected?"Caja cuadrada correctamente.":"Caja cerrada. Revisa la diferencia de "+money(closing-expected)+".");
+}
 function reports(){
 let selectedMonth=window.reportMonth||today().slice(0,7);
 let current=today().slice(0,7);
